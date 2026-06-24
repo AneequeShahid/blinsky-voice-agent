@@ -6,24 +6,22 @@ from __future__ import annotations
 import os
 
 from dotenv import load_dotenv
-from tavily import Tavily
+from tavily import TavilyClient
 
 load_dotenv()
 
-_client: Tavily | None = None
+_client: TavilyClient | None = None
 
 
-def _get_client() -> Tavily:
+def _get_client() -> TavilyClient:
     global _client
     if _client is None:
-        api_key = os.getenv("TAVILY_API_KEY")
-        if not api_key or api_key.startswith("your_"):
-            return Tavily(api_key="")  # returns empty results without key
-        _client = Tavily(api_key=api_key)
+        api_key = os.getenv("TAVILY_API_KEY") or ""
+        _client = TavilyClient(api_key=api_key or None)
     return _client
 
 
-def web_search(query: str, max_results: int = 3) -> str:
+def web_search(query: str, max_results: int = 1) -> str:
     try:
         client = _get_client()
         res = client.search(query=query, max_results=max_results, include_answer=False)
@@ -34,7 +32,7 @@ def web_search(query: str, max_results: int = 3) -> str:
         for i, item in enumerate(items, 1):
             title = item.get("title", "No title")
             url = item.get("url", "")
-            snippet = item.get("content", "")[:200]
+            snippet = (item.get("content") or "")[:250]
             lines.append(f"{i}. {title}\n   {url}\n   {snippet}")
         return "\n\n".join(lines)
     except Exception as exc:
