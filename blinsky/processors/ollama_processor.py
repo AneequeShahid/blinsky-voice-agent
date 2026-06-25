@@ -12,6 +12,8 @@ from typing import Optional, Tuple
 from dotenv import load_dotenv
 from langchain_ollama import OllamaLLM
 
+from blinsky.skills import SkillManager
+
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -77,9 +79,17 @@ class OllamaProcessor:
         )
         self.system_prompt = system_prompt or self.SYSTEM_PROMPT
         self.history: list[dict[str, str]] = []
+        # Phase 4: skill context injected into every prompt.
+        self._skills = SkillManager()
 
     def _build_prompt(self, user_text: str) -> str:
         lines: list[str] = [f"System: {self.system_prompt}"]
+
+        # Phase 4: append learned skills block immediately after the system prompt.
+        skill_ctx = self._skills.inject_context()
+        if skill_ctx:
+            lines.append(skill_ctx)
+
         for turn in self.history[-10:]:
             lines.append(f"User: {turn['user']}")
             lines.append(f"Assistant: {turn['assistant']}")

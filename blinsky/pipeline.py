@@ -2,9 +2,11 @@
 Pipeline: pipecat-inspired processor chain.
 Runs full voice loop: listen -> think -> act -> speak.
 Phase 2: wake word loop via WakeWordDetector.
+Phase 4: skill learning commands intercepted before LLM.
 """
 from __future__ import annotations
 
+import re
 import threading
 from typing import Optional
 
@@ -13,6 +15,7 @@ from blinsky.processors.ollama_processor import OllamaProcessor, _strip_tool_tag
 from blinsky.processors.tool_processor import ToolProcessor
 from blinsky.processors.tts_processor import TTSProcessor
 from blinsky.processors.whisper_processor import WhisperProcessor
+from blinsky.skills import SkillManager
 
 
 class BlinskyPipeline:
@@ -24,6 +27,7 @@ class BlinskyPipeline:
         self.tools = ToolProcessor()
         self.tts = TTSProcessor()
         self.memory = Memory()
+        self.skills = SkillManager()  # Phase 4: skill learning
         self.turn_count = 0
         self._wake_lock = threading.Lock()  # prevent overlapping wake activations
 
@@ -48,6 +52,15 @@ class BlinskyPipeline:
             return "[no speech detected]"
 
         print(f"[User] {user_text}")
+
+        # ── Phase 4: Skill command detection ─────────────────────────────
+        skill_response = self._handle_skill_command(user_text)
+        if skill_response is not None:
+            print(f"[Blinsky] {skill_response}")
+            self.tts.speak(skill_response)
+            return skill_response
+        # ─────────────────────────────────────────────────────────────────
+
         response, tool_call = self.ollama.process(user_text)
         final_response, _ = self._run_tool(user_text, response, tool_call)
         final_response = _strip_tool_tags(final_response)
@@ -60,6 +73,78 @@ class BlinskyPipeline:
             pass
         self.turn_count += 1
         return final_response
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Phase 4: Skill command handler
+    # ──────────────────────────────────────────────────────────────────────
+
+    _RE_REMEMBER_IS = re.compile(
+        r'^remember\s+that\s+(.+?)\s+is\s+(.+)$', re.IGNORECASE
+    )
+    _RE_REMEMBER_COLON = re.compile(
+        r'^remember\s+that\s+(.+?):\s*(.+)$', re.IGNORECASE
+    )
+    _RE_FORGET = re.compile(
+        r'^forget\s+(.+)$', re.IGNORECASE
+    )
+    _RE_WHAT_KNOW = re.compile(
+        r'^what\s+do\s+you\s+know\s+about\s+(.+)$', re.IGNORECASE
+    )
+    _RE_RECALL = re.compile(
+        r'^recall\s+(.+)$', re.IGNORECASE
+    )
+    _RE_LIST = re.compile(
+        r'^(?:list\s+skills|what\s+have\s+you\s+learned)$', re.IGNORECASE
+    )
+
+    def _handle_skill_command(self, user_text: str) -> Optional[str]:
+        """
+        Attempt to match user_text against known skill commands.
+
+        Returns a reply string if the text was a skill command, or None
+        if it should be forwarded to the LLM as normal.
+        """
+        text = user_text.strip()
+
+        # --- remember that <name> is <content> ---
+        m = self._RE_REMEMBER_IS.match(text)
+        if not m:
+            m = self._RE_REMEMBER_COLON.match(text)
+        if m:
+            name, content = m.group(1).strip(), m.group(2).strip()
+            self.skills.learn(name, content)
+            return f"Got it! I will remember that {name} is {content}."
+
+        # --- forget <name> ---
+        m = self._RE_FORGET.match(text)
+        if m:
+            name = m.group(1).strip()
+            existed = self.skills.forget(name)
+            if existed:
+                return f"Done! I have forgotten everything I knew about {name}."
+            return f"I don't have any notes on {name}, so there's nothing to forget."
+
+        # --- what do you know about <name> / recall <name> ---
+        m = self._RE_WHAT_KNOW.match(text)
+        if not m:
+            m = self._RE_RECALL.match(text)
+        if m:
+            name = m.group(1).strip()
+            content = self.skills.get(name)
+            if content:
+                return f"Here is what I know about {name}: {content}"
+            return f"I don't have any notes on {name}."
+
+        # --- list skills / what have you learned ---
+        if self._RE_LIST.match(text):
+            skills = self.skills.list_skills()
+            if not skills:
+                return "I haven't learned any skills yet."
+            bullet_lines = [f"  • {s['name']}: {s['content']}" for s in skills]
+            return "Here is what I have learned:\n" + "\n".join(bullet_lines)
+
+        # No skill command matched — forward to LLM.
+        return None
 
     # ──────────────────────────────────────────────────────────────────────
     # Phase 2: Wake word loop
