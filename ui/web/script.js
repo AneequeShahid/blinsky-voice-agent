@@ -5,6 +5,13 @@ let tavilyKey = localStorage.getItem('blinsky_tavily_key') || '';
 let ollamaURL = localStorage.getItem('blinsky_ollama_url') || 'http://localhost:11434';
 let ollamaModel = localStorage.getItem('blinsky_ollama_model') || 'qwen2.5:7b';
 
+let conversationHistory = [];
+try {
+    conversationHistory = JSON.parse(localStorage.getItem('blinsky_history')) || [];
+} catch {
+    conversationHistory = [];
+}
+
 function getHeaders() {
     return {
         'Content-Type': 'application/json',
@@ -290,7 +297,7 @@ async function sendMessage() {
         const r = await fetch(endpoint, {
             method:  'POST',
             headers: getHeaders(),
-            body:    JSON.stringify({ message: text }),
+            body:    JSON.stringify({ message: text, history: conversationHistory }),
         });
         const d = await r.json();
         hideTyping();
@@ -306,6 +313,11 @@ async function sendMessage() {
             toolCall:    (d.tool_calls && d.tool_calls[0]) || d.tool_call || null,
             skillAction: d.skill_action || false,
         });
+
+        // Save to client history
+        conversationHistory.push({ user: text, assistant: d.reply || '' });
+        localStorage.setItem('blinsky_history', JSON.stringify(conversationHistory));
+
         // Refresh skills in case a skill command was run
         if (d.skill_action) fetchSkills();
     } catch (err) {
@@ -335,8 +347,9 @@ sidebarToggle.addEventListener('click', () => {
 // ── Clear history ─────────────────────────────────────────────────────────────
 clearHistBtn.addEventListener('click', async () => {
     chatMessages.innerHTML = '';
+    conversationHistory = [];
+    localStorage.removeItem('blinsky_history');
     renderMessage('assistant', '🗑️ Conversation history cleared. Starting fresh!');
-    // Optionally reset backend history via restart — for now just clears UI
 });
 
 // ── Wake word toggle ──────────────────────────────────────────────────────────
@@ -379,15 +392,19 @@ agentBtn.addEventListener('click', () => {
 });
 
 // ── Export / Import ───────────────────────────────────────────────────────────
-document.getElementById('export-btn').addEventListener('click', async () => {
+document.getElementById('export-btn').addEventListener('click', () => {
     try {
-        const r = await fetch(`${apiURL}/export/json`, { headers: getHeaders() });
-        const blob = await r.blob();
+        const data = {
+            history: conversationHistory,
+            exported_at: new Date().toISOString()
+        };
+        const content = JSON.stringify(data, null, 2);
+        const blob = new Blob([content], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'blinsky_conversation.json';
         a.click(); URL.revokeObjectURL(url);
-    } catch { renderMessage('assistant', 'Export failed — is the backend running?'); }
+    } catch { renderMessage('assistant', 'Export failed.'); }
 });
 
 document.getElementById('import-input').addEventListener('change', async (e) => {
@@ -396,14 +413,15 @@ document.getElementById('import-input').addEventListener('change', async (e) => 
     const text = await file.text();
     try {
         const data = JSON.parse(text);
-        const history = data.history || [];
-        const r = await fetch(`${apiURL}/import`, {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify({ history }),
+        conversationHistory = data.history || [];
+        localStorage.setItem('blinsky_history', JSON.stringify(conversationHistory));
+        
+        chatMessages.innerHTML = '';
+        conversationHistory.forEach(turn => {
+            renderMessage('user', turn.user);
+            renderMessage('assistant', turn.assistant);
         });
-        const d = await r.json();
-        renderMessage('assistant', `📂 Imported ${d.loaded} conversation turns.`);
+        renderMessage('assistant', `📂 Imported ${conversationHistory.length} conversation turns.`);
     } catch { renderMessage('assistant', 'Import failed — invalid JSON file.'); }
 });
 
@@ -505,6 +523,13 @@ function checkSetup() {
 
 // ── Initial load ──────────────────────────────────────────────────────────────
 checkSetup();
+if (conversationHistory.length > 0) {
+    chatMessages.innerHTML = ''; // clear welcome card
+    conversationHistory.forEach(turn => {
+        renderMessage('user', turn.user);
+        renderMessage('assistant', turn.assistant);
+    });
+}
 fetchStatus();
 fetchSkills();
 setInterval(fetchStatus, 8000);   // poll every 8s

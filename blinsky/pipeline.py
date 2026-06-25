@@ -21,7 +21,7 @@ from blinsky.skills import SkillManager
 class BlinskyPipeline:
     """Chains Whisper -> Ollama (+ tools) -> TTS in a live voice loop."""
 
-    def __init__(self, keys: Optional[dict] = None) -> None:
+    def __init__(self, keys: Optional[dict] = None, bypass_memory: bool = False) -> None:
         self.whisper = WhisperProcessor()
         
         keys = keys or {}
@@ -32,7 +32,17 @@ class BlinskyPipeline:
         self.ollama = OllamaProcessor(base_url=ollama_url, model_name=ollama_model)
         self.tools = ToolProcessor(tavily_key=tavily_key)
         self.tts = TTSProcessor()
-        self.memory = Memory()
+        
+        self.bypass_memory = bypass_memory
+        if not bypass_memory:
+            try:
+                from blinsky.memory import Memory
+                self.memory = Memory()
+            except Exception:
+                self.memory = None
+        else:
+            self.memory = None
+            
         self.skills = SkillManager()  # Phase 4: skill learning
         self.turn_count = 0
         self._wake_lock = threading.Lock()  # prevent overlapping wake activations
@@ -81,10 +91,11 @@ class BlinskyPipeline:
         print(f"[Blinsky] {final_response}")
 
         self.ollama.add_turn(user_text, final_response)
-        try:
-            self.memory.add(self.turn_count, user_text, final_response)
-        except Exception:
-            pass
+        if self.memory:
+            try:
+                self.memory.add(self.turn_count, user_text, final_response)
+            except Exception:
+                pass
         self.turn_count += 1
         return final_response
 

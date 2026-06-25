@@ -30,15 +30,7 @@ app.add_middleware(
 
 # ── Singletons ────────────────────────────────────────────────────────────────
 
-_pipeline: Optional[BlinskyPipeline] = None
 _start_time = time.time()
-
-
-def _get_pipeline() -> BlinskyPipeline:
-    global _pipeline
-    if _pipeline is None:
-        _pipeline = BlinskyPipeline()
-    return _pipeline
 
 
 def _ollama_alive() -> bool:
@@ -56,6 +48,8 @@ def _ollama_alive() -> bool:
 
 class ChatRequest(BaseModel):
     message: str
+    history: list[dict[str, str]] = []
+    session_id: Optional[str] = None
 
 
 class SkillLearnRequest(BaseModel):
@@ -76,7 +70,7 @@ def status() -> dict:
     telegram_token = bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip())
     picovoice_key  = bool(os.getenv("PICOVOICE_ACCESS_KEY", "").strip())
     tavily_key     = bool(os.getenv("TAVILY_API_KEY", "").strip())
-    skills         = _get_pipeline().skills.list_skills()
+    skills = SkillManager().list_skills()
 
     return {
         "ollama":    _ollama_alive(),
@@ -134,16 +128,14 @@ def chat(
     if not user_text:
         return {"reply": "Please say something!", "tool_call": None, "skill_action": None}
 
-    pipeline = _get_pipeline()
-    pipeline.ollama.base_url = x_ollama_url
-    pipeline.ollama.model_name = x_ollama_model or "qwen2.5:7b"
-    from langchain_ollama import OllamaLLM
-    pipeline.ollama.llm = OllamaLLM(
-        model=pipeline.ollama.model_name,
-        base_url=pipeline.ollama.base_url,
-        temperature=0.2,
-    )
-    pipeline.tools.tavily_key = x_tavily_key
+    keys = {
+        "ollama_url": x_ollama_url,
+        "ollama_model": x_ollama_model or "qwen2.5:7b",
+        "tavily_key": x_tavily_key
+    }
+    
+    pipeline = BlinskyPipeline(keys=keys, bypass_memory=True)
+    pipeline.ollama.history = payload.history
 
     # Phase 4: check skill commands first
     skill_response = pipeline._handle_skill_command(user_text)
@@ -166,13 +158,6 @@ def chat(
     if not reply:
         reply = "I ran into an issue generating a response. Please try again."
 
-    pipeline.ollama.add_turn(user_text, reply)
-    try:
-        pipeline.memory.add(pipeline.turn_count, user_text, reply)
-        pipeline.turn_count += 1
-    except Exception:
-        pass
-
     return {"reply": reply, "tool_call": tool_call, "skill_action": False}
 
 
@@ -190,7 +175,13 @@ def agent_chat(
     if not user_text:
         return {"reply": "Please say something!", "steps": [], "tool_calls": [], "skill_action": None}
 
-    pipeline = _get_pipeline()
+    keys = {
+        "ollama_url": x_ollama_url,
+        "ollama_model": x_ollama_model or "qwen2.5:7b",
+        "tavily_key": x_tavily_key
+    }
+    
+    pipeline = BlinskyPipeline(keys=keys, bypass_memory=True)
 
     # Phase 4: check skill commands first
     skill_response = pipeline._handle_skill_command(user_text)
@@ -202,20 +193,8 @@ def agent_chat(
             "skill_action": True
         }
 
-    keys = {
-        "ollama_url": x_ollama_url,
-        "ollama_model": x_ollama_model or "qwen2.5:7b",
-        "tavily_key": x_tavily_key
-    }
     from blinsky.agent import run_agent
-    res = run_agent(user_text, pipeline.ollama.history, keys=keys)
-
-    pipeline.ollama.add_turn(user_text, res["reply"])
-    try:
-        pipeline.memory.add(pipeline.turn_count, user_text, res["reply"])
-        pipeline.turn_count += 1
-    except Exception:
-        pass
+    res = run_agent(user_text, payload.history, keys=keys)
 
     return {
         "reply": res["reply"],
@@ -225,67 +204,22 @@ def agent_chat(
     }
 
 
-@app.get("/history")
-def history() -> dict:
-    """Return conversation history for the current session."""
-    return {"history": _get_pipeline().ollama.history}
-
-
 @app.get("/skills")
 def list_skills() -> dict:
-    return {"skills": _get_pipeline().skills.list_skills()}
+    return {"skills": SkillManager().list_skills()}
 
 
 @app.post("/skills")
 def learn_skill(payload: SkillLearnRequest) -> dict:
     if not payload.name.strip() or not payload.content.strip():
         raise HTTPException(status_code=400, detail="name and content are required")
-    _get_pipeline().skills.learn(payload.name.strip(), payload.content.strip())
+    SkillManager().learn(payload.name.strip(), payload.content.strip())
     return {"ok": True, "message": f"Learned: {payload.name}"}
 
 
 @app.delete("/skills/{name}")
 def forget_skill(name: str) -> dict:
-    existed = _get_pipeline().skills.forget(name)
+    existed = SkillManager().forget(name)
     if not existed:
         raise HTTPException(status_code=404, detail=f"No skill named '{name}'")
     return {"ok": True, "message": f"Forgot: {name}"}
-
-
-from fastapi.responses import JSONResponse, PlainTextResponse
-import json as json_lib
-
-@app.get("/export/json")
-def export_json() -> JSONResponse:
-    """Download conversation history as JSON."""
-    history = _get_pipeline().ollama.history
-    content = json_lib.dumps({"history": history, "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, indent=2)
-    return JSONResponse(
-        content=json_lib.loads(content),
-        headers={"Content-Disposition": "attachment; filename=blinsky_conversation.json"}
-    )
-
-@app.get("/export/txt", response_class=PlainTextResponse)
-def export_txt() -> str:
-    """Download conversation history as readable text file."""
-    history = _get_pipeline().ollama.history
-    lines = ["Blinsky Conversation Export", "=" * 40, ""]
-    for turn in history:
-        lines.append(f"Aneeque: {turn.get('user', '')}")
-        lines.append(f"Blinsky: {turn.get('assistant', '')}")
-        lines.append("")
-    content = "\n".join(lines)
-    return PlainTextResponse(
-        content=content,
-        headers={"Content-Disposition": "attachment; filename=blinsky_conversation.txt"}
-    )
-
-class ImportRequest(BaseModel):
-    history: list
-
-@app.post("/import")
-def import_history(payload: ImportRequest) -> dict:
-    """Load conversation history into the current session."""
-    pipeline = _get_pipeline()
-    pipeline.ollama.history = payload.history
-    return {"ok": True, "loaded": len(payload.history), "message": f"Loaded {len(payload.history)} turns"}

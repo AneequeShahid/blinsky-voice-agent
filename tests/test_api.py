@@ -10,12 +10,12 @@ def test_health():
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
-@patch("api.app._get_pipeline")
-def test_chat(mock_get_pipeline):
+@patch("api.app.BlinskyPipeline")
+def test_chat(mock_pipeline_class):
     mock_pipeline = MagicMock()
     mock_pipeline.ollama.process.return_value = ("Hello from mock", None)
     mock_pipeline._handle_skill_command.return_value = None
-    mock_get_pipeline.return_value = mock_pipeline
+    mock_pipeline_class.return_value = mock_pipeline
 
     response = client.post(
         "/chat",
@@ -25,11 +25,12 @@ def test_chat(mock_get_pipeline):
     assert response.status_code == 200
     assert response.json()["reply"] == "Hello from mock"
 
-@patch("api.app._get_pipeline")
-def test_skills_endpoints(mock_get_pipeline):
-    mock_pipeline = MagicMock()
-    mock_pipeline.skills.list_skills.return_value = [{"name": "s1", "content": "c1"}]
-    mock_get_pipeline.return_value = mock_pipeline
+
+@patch("api.app.SkillManager")
+def test_skills_endpoints(mock_skill_manager_class):
+    mock_manager = MagicMock()
+    mock_manager.list_skills.return_value = [{"name": "s1", "content": "c1"}]
+    mock_skill_manager_class.return_value = mock_manager
 
     # GET /skills
     response = client.get("/skills")
