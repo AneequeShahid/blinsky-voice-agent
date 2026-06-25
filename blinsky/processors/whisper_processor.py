@@ -24,15 +24,14 @@ class WhisperProcessor:
         self,
         sample_rate: int = 16000,
         channels: int = 1,
-        chunk_duration: float = 3.0,
+        chunk_duration: float = 0.5,
         model_size: str = "tiny",
     ) -> None:
         self.sample_rate = sample_rate
         self.channels = channels
         self.chunk_duration = chunk_duration
-        self.silence_threshold = 500
-        self.silence_duration = 1.2
-        self.max_listen_duration = 15.0
+        self.silence_duration = 2.0        # changed: 1.2 → 2.0s
+        self.max_listen_duration = 30.0    # changed: 15.0 → 30.0s
 
         self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
         self._audio_queue: "queue.Queue[np.ndarray]" = queue.Queue()
@@ -49,16 +48,33 @@ class WhisperProcessor:
         self._audio_queue.put(indata.copy())
 
     def record_chunk(self) -> Optional[np.ndarray]:
-        """Record a single speech chunk — stops on silence or timelimit."""
+        """Record a single speech chunk — stops on silence or timelimit.
+
+        Changes vs original:
+        - silence_duration: 2.0s, max_listen_duration: 30.0s
+        - Dynamic threshold: calibrate on first 0.5s of audio
+        - Minimum speech duration: discard if < 0.5s of non-silent audio
+        - Visual progress: prints dots while recording
+        """
         chunk_samples = int(self.sample_rate * self.chunk_duration)
         max_chunks = int(self.max_listen_duration / self.chunk_duration)
         max_silent_chunks = int(self.silence_duration / self.chunk_duration)
 
+        # How many chunks make up the calibration window (first 0.5s)
+        calibration_duration = 0.5
+        calibration_chunks_needed = max(
+            1, int(calibration_duration / self.chunk_duration)
+        )
+
         frames: list[np.ndarray] = []
+        calibration_frames: list[np.ndarray] = []
+        dynamic_threshold: Optional[float] = None
+        calibrated = False
+
         silent_chunks = 0
         total_chunks = 0
 
-        print("[Whisper] recording...")
+        print("[Whisper] Listening", end="", flush=True)  # visual feedback start
         self._recording.set()
 
         stream = sd.InputStream(
@@ -76,9 +92,22 @@ class WhisperProcessor:
                     data = self._audio_queue.get(timeout=self.chunk_duration + 1)
                     frames.append(data)
                     total_chunks += 1
+                    print(".", end="", flush=True)  # visual feedback: dot per chunk
 
                     rms = np.sqrt(np.mean(data.astype(np.float32) ** 2))
-                    if rms < self.silence_threshold:
+
+                    # ---- Calibration phase ----
+                    if not calibrated:
+                        calibration_frames.append(rms)
+                        if len(calibration_frames) >= calibration_chunks_needed:
+                            ambient_rms = float(np.mean(calibration_frames))
+                            dynamic_threshold = max(ambient_rms * 1.5, 200.0)
+                            calibrated = True
+                        # During calibration we skip silence counting
+                        continue
+
+                    # ---- VAD with dynamic threshold ----
+                    if rms < dynamic_threshold:
                         silent_chunks += 1
                     else:
                         silent_chunks = 0
@@ -91,11 +120,33 @@ class WhisperProcessor:
             stream.stop()
             stream.close()
             self._recording.clear()
+            print()  # newline after dots
 
         if not frames:
             return None
 
         audio = np.concatenate(frames, axis=0)
+
+        # ---- Minimum speech duration guard ----
+        # Recompute threshold for post-processing (fall back to 200 if never calibrated)
+        threshold = dynamic_threshold if dynamic_threshold is not None else 200.0
+        min_speech_duration = 0.5  # seconds
+
+        # Count non-silent samples by checking frame-level RMS
+        speech_samples = 0
+        for frame in frames:
+            frame_rms = np.sqrt(np.mean(frame.astype(np.float32) ** 2))
+            if frame_rms >= threshold:
+                speech_samples += frame.shape[0]
+
+        total_speech_duration = speech_samples / self.sample_rate
+        if total_speech_duration < min_speech_duration:
+            print(
+                f"[Whisper] Speech too short ({total_speech_duration:.2f}s < "
+                f"{min_speech_duration}s), discarding."
+            )
+            return None
+
         return audio
 
     # ------------------------------------------------------------------
