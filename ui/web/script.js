@@ -1,6 +1,18 @@
 /* ─── script.js — Blinsky UI v2 ─────────────────────────────────────────── */
 
-const API = 'http://localhost:9001';
+let apiURL = localStorage.getItem('blinsky_backend_url') || 'http://localhost:9001';
+let tavilyKey = localStorage.getItem('blinsky_tavily_key') || '';
+let ollamaURL = localStorage.getItem('blinsky_ollama_url') || 'http://localhost:11434';
+let ollamaModel = localStorage.getItem('blinsky_ollama_model') || 'qwen2.5:7b';
+
+function getHeaders() {
+    return {
+        'Content-Type': 'application/json',
+        'X-Tavily-Key': tavilyKey,
+        'X-Ollama-URL': ollamaURL,
+        'X-Ollama-Model': ollamaModel
+    };
+}
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const chatMessages   = document.getElementById('chat-messages');
@@ -178,7 +190,7 @@ function hideTyping() {
 // ── Status polling ─────────────────────────────────────────────────────────────
 async function fetchStatus() {
     try {
-        const r = await fetch(`${API}/status`);
+        const r = await fetch(`${apiURL}/status`, { headers: getHeaders() });
         const d = await r.json();
 
         // Connection indicator
@@ -210,7 +222,7 @@ async function fetchStatus() {
 // ── Skills ────────────────────────────────────────────────────────────────────
 async function fetchSkills() {
     try {
-        const r = await fetch(`${API}/skills`);
+        const r = await fetch(`${apiURL}/skills`, { headers: getHeaders() });
         const d = await r.json();
         renderSkills(d.skills || []);
     } catch { /* silent */ }
@@ -235,7 +247,7 @@ function renderSkills(skills) {
         `;
         chip.querySelector('.skill-del-btn').addEventListener('click', async e => {
             const name = e.currentTarget.dataset.name;
-            await fetch(`${API}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' });
+            await fetch(`${apiURL}/skills/${encodeURIComponent(name)}`, { method: 'DELETE', headers: getHeaders() });
             fetchSkills();
         });
         skillsList.appendChild(chip);
@@ -246,9 +258,9 @@ skillAddBtn.addEventListener('click', async () => {
     const name    = skillNameIn.value.trim();
     const content = skillContentIn.value.trim();
     if (!name || !content) return;
-    await fetch(`${API}/skills`, {
+    await fetch(`${apiURL}/skills`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ name, content }),
     });
     skillNameIn.value = '';
@@ -274,10 +286,10 @@ async function sendMessage() {
     showTyping();
 
     try {
-        const endpoint = agentActive ? `${API}/agent` : `${API}/chat`;
+        const endpoint = agentActive ? `${apiURL}/agent` : `${apiURL}/chat`;
         const r = await fetch(endpoint, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getHeaders(),
             body:    JSON.stringify({ message: text }),
         });
         const d = await r.json();
@@ -298,7 +310,7 @@ async function sendMessage() {
         if (d.skill_action) fetchSkills();
     } catch (err) {
         hideTyping();
-        renderMessage('assistant', `Connection error — is the backend running on ${API}?`);
+        renderMessage('assistant', `Connection error — is the backend running on ${apiURL}?`);
     }
 }
 
@@ -369,7 +381,7 @@ agentBtn.addEventListener('click', () => {
 // ── Export / Import ───────────────────────────────────────────────────────────
 document.getElementById('export-btn').addEventListener('click', async () => {
     try {
-        const r = await fetch(`${API}/export/json`);
+        const r = await fetch(`${apiURL}/export/json`, { headers: getHeaders() });
         const blob = await r.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -385,9 +397,9 @@ document.getElementById('import-input').addEventListener('change', async (e) => 
     try {
         const data = JSON.parse(text);
         const history = data.history || [];
-        const r = await fetch(`${API}/import`, {
+        const r = await fetch(`${apiURL}/import`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getHeaders(),
             body: JSON.stringify({ history }),
         });
         const d = await r.json();
@@ -395,7 +407,104 @@ document.getElementById('import-input').addEventListener('change', async (e) => 
     } catch { renderMessage('assistant', 'Import failed — invalid JSON file.'); }
 });
 
+// ── Settings Modal ────────────────────────────────────────────────────────────
+const settingsModal = document.getElementById('settings-modal');
+const settingsBtn = document.getElementById('settings-btn');
+const modalCloseBtn = document.getElementById('modal-close-btn');
+const modalSaveBtn = document.getElementById('modal-save-btn');
+const modalTestBtn = document.getElementById('modal-test-btn');
+const modalStatus = document.getElementById('modal-status');
+
+const setBackendUrl = document.getElementById('set-backend-url');
+const setTavilyKey = document.getElementById('set-tavily-key');
+const setOllamaUrl = document.getElementById('set-ollama-url');
+const setOllamaModel = document.getElementById('set-ollama-model');
+
+function showModal() {
+    setBackendUrl.value = apiURL;
+    setTavilyKey.value = tavilyKey;
+    setOllamaUrl.value = ollamaURL;
+    setOllamaModel.value = ollamaModel;
+    modalStatus.style.display = 'none';
+    settingsModal.style.display = 'flex';
+}
+
+function hideModal() {
+    settingsModal.style.display = 'none';
+}
+
+function showModalStatus(text, type) {
+    modalStatus.textContent = text;
+    modalStatus.className = `modal-status ${type}`;
+}
+
+settingsBtn.addEventListener('click', showModal);
+modalCloseBtn.addEventListener('click', hideModal);
+
+settingsModal.addEventListener('click', (e) => {
+    if (e.target === settingsModal) hideModal();
+});
+
+modalTestBtn.addEventListener('click', async () => {
+    const tempBackend = setBackendUrl.value.trim();
+    const tempTavily = setTavilyKey.value.trim();
+    const tempOllamaUrl = setOllamaUrl.value.trim();
+    const tempOllamaModel = setOllamaModel.value.trim();
+    
+    if (!tempBackend || !tempTavily || !tempOllamaUrl) {
+        showModalStatus('Backend URL, Tavily Key, and Ollama URL are required to test!', 'error');
+        return;
+    }
+    
+    showModalStatus('Testing connection...', 'pending');
+    
+    try {
+        const r = await fetch(`${tempBackend}/validate-keys`, {
+            method: 'POST',
+            headers: {
+                'X-Tavily-Key': tempTavily,
+                'X-Ollama-URL': tempOllamaUrl,
+                'X-Ollama-Model': tempOllamaModel
+            }
+        });
+        const d = await r.json();
+        if (r.ok && d.ok) {
+            showModalStatus('Connection test successful! Keys are valid.', 'success');
+        } else {
+            showModalStatus(`Test failed: ${d.detail || 'Unknown error'}`, 'error');
+        }
+    } catch (err) {
+        showModalStatus(`Failed to connect to backend: ${err.message}`, 'error');
+    }
+});
+
+modalSaveBtn.addEventListener('click', () => {
+    apiURL = setBackendUrl.value.trim();
+    tavilyKey = setTavilyKey.value.trim();
+    ollamaURL = setOllamaUrl.value.trim();
+    ollamaModel = setOllamaModel.value.trim();
+    
+    localStorage.setItem('blinsky_backend_url', apiURL);
+    localStorage.setItem('blinsky_tavily_key', tavilyKey);
+    localStorage.setItem('blinsky_ollama_url', ollamaURL);
+    localStorage.setItem('blinsky_ollama_model', ollamaModel);
+    
+    hideModal();
+    renderMessage('assistant', '⚙️ Settings saved successfully!');
+    
+    // Refresh status and skills with new settings
+    fetchStatus();
+    fetchSkills();
+});
+
+function checkSetup() {
+    if (!tavilyKey || !ollamaURL || !apiURL) {
+        showModal();
+    }
+}
+
 // ── Initial load ──────────────────────────────────────────────────────────────
+checkSetup();
 fetchStatus();
 fetchSkills();
 setInterval(fetchStatus, 8000);   // poll every 8s

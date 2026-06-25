@@ -721,3 +721,166 @@ em { color: var(--c-accent-2); font-style: normal; }
 /* ── Scrollbar for skills ─────────────────────────────────────────────────── */
 .skills-list::-webkit-scrollbar { width: 4px; }
 .skills-list::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 10px; }
+
+/* ── Modal Overlay ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(4, 5, 10, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.25s ease-out;
+}
+
+/* ── Modal Card ── */
+.modal-card {
+    background: var(--c-surface-1);
+    border: 1px solid var(--c-border-hi);
+    border-radius: var(--r-lg);
+    width: 100%;
+    max-width: 460px;
+    padding: 24px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    background: linear-gradient(90deg, #ffffff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--c-text-2);
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color var(--t-fast);
+}
+
+.modal-close:hover {
+    color: var(--c-red);
+}
+
+.modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--c-text-2);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.form-group input {
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    border-radius: var(--r-sm);
+    color: var(--c-text);
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color var(--t-fast);
+}
+
+.form-group input:focus {
+    border-color: var(--c-accent-1);
+    box-shadow: 0 0 0 2px rgba(124,58,237,0.15);
+}
+
+.modal-status {
+    font-size: 0.78rem;
+    padding: 8px 12px;
+    border-radius: var(--r-sm);
+    display: none;
+}
+.modal-status.success {
+    display: block;
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--c-green);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.modal-status.error {
+    display: block;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--c-red);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.modal-status.pending {
+    display: block;
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--c-yellow);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.modal-btn {
+    padding: 10px 18px;
+    border-radius: var(--r-sm);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all var(--t-fast);
+}
+
+.modal-btn.primary {
+    background: linear-gradient(135deg, var(--c-accent-1), var(--c-accent-mid));
+    color: white;
+}
+.modal-btn.primary:hover {
+    filter: brightness(1.1);
+}
+
+.modal-btn.secondary {
+    background: var(--c-surface-2);
+    border: 1px solid var(--c-border);
+    color: var(--c-text);
+}
+.modal-btn.secondary:hover {
+    background: var(--c-surface-3);
+    border-color: var(--c-border-hi);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
