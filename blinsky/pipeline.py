@@ -45,7 +45,7 @@ class BlinskyPipeline:
         final_response = _strip_tool_tags(final_response)
         return final_response or result, result
 
-    def run_turn(self, override_text: Optional[str] = None) -> str:
+    def run_turn(self, override_text: Optional[str] = None, use_agent: bool = False) -> str:
         """Run one full listen→think→act cycle. Returns the final reply text."""
         user_text = override_text or self.whisper.process()
         if not user_text:
@@ -61,9 +61,17 @@ class BlinskyPipeline:
             return skill_response
         # ─────────────────────────────────────────────────────────────────
 
-        response, tool_call = self.ollama.process(user_text)
-        final_response, _ = self._run_tool(user_text, response, tool_call)
-        final_response = _strip_tool_tags(final_response)
+        if use_agent:
+            from blinsky.agent import run_agent
+            res = run_agent(user_text, self.ollama.history)
+            final_response = res["reply"]
+            for step in res["steps"]:
+                print(f"[Agent Step] {step}")
+        else:
+            response, tool_call = self.ollama.process(user_text)
+            final_response, _ = self._run_tool(user_text, response, tool_call)
+            final_response = _strip_tool_tags(final_response)
+
         print(f"[Blinsky] {final_response}")
 
         self.ollama.add_turn(user_text, final_response)

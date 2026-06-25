@@ -128,6 +128,42 @@ def chat(payload: ChatRequest) -> dict:
     return {"reply": reply, "tool_call": tool_call, "skill_action": False}
 
 
+@app.post("/agent")
+def agent_chat(payload: ChatRequest) -> dict:
+    user_text = payload.message.strip()
+    if not user_text:
+        return {"reply": "Please say something!", "steps": [], "tool_calls": [], "skill_action": None}
+
+    pipeline = _get_pipeline()
+
+    # Phase 4: check skill commands first
+    skill_response = pipeline._handle_skill_command(user_text)
+    if skill_response is not None:
+        return {
+            "reply": skill_response,
+            "steps": [f"Skill command detected: {user_text}"],
+            "tool_calls": [],
+            "skill_action": True
+        }
+
+    from blinsky.agent import run_agent
+    res = run_agent(user_text, pipeline.ollama.history)
+
+    pipeline.ollama.add_turn(user_text, res["reply"])
+    try:
+        pipeline.memory.add(pipeline.turn_count, user_text, res["reply"])
+        pipeline.turn_count += 1
+    except Exception:
+        pass
+
+    return {
+        "reply": res["reply"],
+        "steps": res["steps"],
+        "tool_calls": res["tool_calls"],
+        "skill_action": False
+    }
+
+
 @app.get("/history")
 def history() -> dict:
     """Return conversation history for the current session."""

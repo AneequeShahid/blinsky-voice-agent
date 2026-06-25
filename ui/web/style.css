@@ -418,9 +418,27 @@ html, body {
     animation: wake-pulse 2s infinite;
 }
 
+.agent-btn.active {
+    background: rgba(124,58,237,0.1);
+    border-color: rgba(124,58,237,0.4);
+    color: #a78bfa;
+    animation: agent-pulse 2s infinite;
+}
+
+.topbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
 @keyframes wake-pulse {
     0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.3); }
     50%      { box-shadow: 0 0 0 8px rgba(16,185,129,0); }
+}
+
+@keyframes agent-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.3); }
+    50%      { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
 }
 
 /* ── Chat area ────────────────────────────────────────────────────────────── */

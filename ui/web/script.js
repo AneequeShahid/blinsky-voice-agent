@@ -262,6 +262,8 @@ skillAddBtn.addEventListener('click', async () => {
 });
 
 // ── Send message ──────────────────────────────────────────────────────────────
+let agentActive = false;
+
 async function sendMessage() {
     const text = msgInput.value.trim();
     if (!text) return;
@@ -272,15 +274,24 @@ async function sendMessage() {
     showTyping();
 
     try {
-        const r = await fetch(`${API}/chat`, {
+        const endpoint = agentActive ? `${API}/agent` : `${API}/chat`;
+        const r = await fetch(endpoint, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ message: text }),
         });
         const d = await r.json();
         hideTyping();
-        renderMessage('assistant', d.reply || 'No response.', {
-            toolCall:    d.tool_call    || null,
+
+        let replyText = d.reply || 'No response.';
+        if (agentActive && d.steps && d.steps.length > 0) {
+            // format reasoning steps
+            const reasoning = d.steps.map(step => `> ${step}`).join('\n');
+            replyText = `**Reasoning Steps:**\n${reasoning}\n\n${replyText}`;
+        }
+
+        renderMessage('assistant', replyText, {
+            toolCall:    (d.tool_calls && d.tool_calls[0]) || d.tool_call || null,
             skillAction: d.skill_action || false,
         });
         // Refresh skills in case a skill command was run
@@ -344,6 +355,15 @@ micBtn.addEventListener('click', () => {
         msgInput.placeholder = 'Ask Blinsky anything…';
         voiceBars.classList.remove('active');
     }
+});
+
+// ── Agent toggle ──────────────────────────────────────────────────────────────
+const agentBtn = document.getElementById('agent-btn');
+const agentLabel = document.getElementById('agent-label');
+agentBtn.addEventListener('click', () => {
+    agentActive = !agentActive;
+    agentBtn.classList.toggle('active', agentActive);
+    agentLabel.textContent = agentActive ? 'Agent: Active' : 'Agent Mode';
 });
 
 // ── Initial load ──────────────────────────────────────────────────────────────
