@@ -55,14 +55,19 @@ RULES:
   6. Stop after at most 5 tool calls."""
 
 
-def _build_llm() -> OllamaLLM:
-    return OllamaLLM(model=MODEL_NAME, base_url=OLLAMA_BASE_URL, temperature=0.1)
+def _build_llm(keys: Optional[dict] = None) -> OllamaLLM:
+    keys = keys or {}
+    url = keys.get("ollama_url") or OLLAMA_BASE_URL
+    model = keys.get("ollama_model") or MODEL_NAME
+    return OllamaLLM(model=model, base_url=url, temperature=0.1)
 
 
 def think_node(state: BlinskyState) -> BlinskyState:
     """LLM decides next action: tool call or final answer."""
-    llm   = _build_llm()
-    tool_proc = ToolProcessor()
+    keys = state.get("keys")
+    llm   = _build_llm(keys)
+    tavily_key = (keys or {}).get("tavily_key")
+    tool_proc = ToolProcessor(tavily_key=tavily_key)
 
     # Build context from accumulated messages
     context = "\n".join(state["messages"][-8:])  # last 8 context lines
@@ -131,7 +136,8 @@ def respond_node(state: BlinskyState) -> BlinskyState:
     if state.get("final_response"):
         return state
 
-    llm = _build_llm()
+    keys = state.get("keys")
+    llm = _build_llm(keys)
     context = "\n".join(state["messages"][-6:])
     prompt = (
         f"System: {_AGENT_SYSTEM}\n\n"
@@ -172,7 +178,11 @@ def build_agent_graph() -> StateGraph:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def run_agent(user_message: str, history: Optional[list[dict]] = None) -> dict:
+def run_agent(
+    user_message: str,
+    history: Optional[list[dict]] = None,
+    keys: Optional[dict] = None,
+) -> dict:
     """
     Run the ReAct agent on a user message.
 
@@ -193,6 +203,7 @@ def run_agent(user_message: str, history: Optional[list[dict]] = None) -> dict:
         "final_response": "",
         "iteration":      0,
         "done":           False,
+        "keys":           keys or {},
     }
 
     graph = build_agent_graph()

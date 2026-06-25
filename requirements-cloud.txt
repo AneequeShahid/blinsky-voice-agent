@@ -1,0 +1,10 @@
+numpy==1.26.4
+langchain-ollama==0.2.0
+langgraph==0.2.30
+chromadb==0.5.15
+tavily-python==0.4.7
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+streamlit==1.36.0
+python-dotenv==1.0.1
+python-telegram-bot>=20.0

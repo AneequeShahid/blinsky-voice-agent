@@ -9,7 +9,7 @@ import socket
 import time
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -89,13 +89,61 @@ def status() -> dict:
     }
 
 
+@app.post("/validate-keys")
+def validate_keys(
+    x_tavily_key: Optional[str] = Header(None, alias="X-Tavily-Key"),
+    x_ollama_url: Optional[str] = Header(None, alias="X-Ollama-URL"),
+    x_ollama_model: Optional[str] = Header(None, alias="X-Ollama-Model"),
+) -> dict:
+    if not x_tavily_key or not x_ollama_url:
+        raise HTTPException(status_code=400, detail="X-Tavily-Key and X-Ollama-URL headers are required")
+    
+    model = x_ollama_model or "qwen2.5:7b"
+    
+    # 1. Validate Ollama URL and Model
+    try:
+        from langchain_ollama import OllamaLLM
+        test_llm = OllamaLLM(model=model, base_url=x_ollama_url, temperature=0.1)
+        test_llm.invoke("Hi")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Ollama validation failed: {exc}")
+        
+    # 2. Validate Tavily Key
+    try:
+        from blinsky.tools.search import web_search
+        res = web_search("test", tavily_key=x_tavily_key)
+        if "Search error" in res:
+            raise Exception(res)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Tavily validation failed: {exc}")
+        
+    return {"ok": True, "message": "Keys are valid"}
+
+
 @app.post("/chat")
-def chat(payload: ChatRequest) -> dict:
+def chat(
+    payload: ChatRequest,
+    x_tavily_key: Optional[str] = Header(None, alias="X-Tavily-Key"),
+    x_ollama_url: Optional[str] = Header(None, alias="X-Ollama-URL"),
+    x_ollama_model: Optional[str] = Header(None, alias="X-Ollama-Model"),
+) -> dict:
+    if not x_tavily_key or not x_ollama_url:
+        raise HTTPException(status_code=400, detail="X-Tavily-Key and X-Ollama-URL headers are required")
+
     user_text = payload.message.strip()
     if not user_text:
         return {"reply": "Please say something!", "tool_call": None, "skill_action": None}
 
     pipeline = _get_pipeline()
+    pipeline.ollama.base_url = x_ollama_url
+    pipeline.ollama.model_name = x_ollama_model or "qwen2.5:7b"
+    from langchain_ollama import OllamaLLM
+    pipeline.ollama.llm = OllamaLLM(
+        model=pipeline.ollama.model_name,
+        base_url=pipeline.ollama.base_url,
+        temperature=0.2,
+    )
+    pipeline.tools.tavily_key = x_tavily_key
 
     # Phase 4: check skill commands first
     skill_response = pipeline._handle_skill_command(user_text)
@@ -129,7 +177,15 @@ def chat(payload: ChatRequest) -> dict:
 
 
 @app.post("/agent")
-def agent_chat(payload: ChatRequest) -> dict:
+def agent_chat(
+    payload: ChatRequest,
+    x_tavily_key: Optional[str] = Header(None, alias="X-Tavily-Key"),
+    x_ollama_url: Optional[str] = Header(None, alias="X-Ollama-URL"),
+    x_ollama_model: Optional[str] = Header(None, alias="X-Ollama-Model"),
+) -> dict:
+    if not x_tavily_key or not x_ollama_url:
+        raise HTTPException(status_code=400, detail="X-Tavily-Key and X-Ollama-URL headers are required")
+
     user_text = payload.message.strip()
     if not user_text:
         return {"reply": "Please say something!", "steps": [], "tool_calls": [], "skill_action": None}
@@ -146,8 +202,13 @@ def agent_chat(payload: ChatRequest) -> dict:
             "skill_action": True
         }
 
+    keys = {
+        "ollama_url": x_ollama_url,
+        "ollama_model": x_ollama_model or "qwen2.5:7b",
+        "tavily_key": x_tavily_key
+    }
     from blinsky.agent import run_agent
-    res = run_agent(user_text, pipeline.ollama.history)
+    res = run_agent(user_text, pipeline.ollama.history, keys=keys)
 
     pipeline.ollama.add_turn(user_text, res["reply"])
     try:

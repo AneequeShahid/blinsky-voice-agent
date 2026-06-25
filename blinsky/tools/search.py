@@ -21,9 +21,12 @@ def _get_client() -> TavilyClient:
     return _client
 
 
-def web_search(query: str, max_results: int = 1) -> str:
+def web_search(query: str, tavily_key: Optional[str] = None, max_results: int = 1) -> str:
     try:
-        client = _get_client()
+        if tavily_key:
+            client = TavilyClient(api_key=tavily_key)
+        else:
+            client = _get_client()
         res = client.search(query=query, max_results=max_results, include_answer=False)
         items = res.get("results", [])[:max_results]
         if not items:

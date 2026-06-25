@@ -77,10 +77,17 @@ class OllamaProcessor:
         "  8. Never hallucinate search results. If you searched and got results, cite them.\n"
     )
 
-    def __init__(self, system_prompt: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        system_prompt: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model_name: Optional[str] = None,
+    ) -> None:
+        self.base_url = base_url or OLLAMA_BASE_URL
+        self.model_name = model_name or MODEL_NAME
         self.llm = OllamaLLM(
-            model=MODEL_NAME,
-            base_url=OLLAMA_BASE_URL,
+            model=self.model_name,
+            base_url=self.base_url,
             temperature=0.2,
         )
         self.system_prompt = system_prompt or self.SYSTEM_PROMPT
@@ -131,9 +138,9 @@ class OllamaProcessor:
         except Exception as exc:
             err_str = str(exc).lower()
             if "model" in err_str or "not found" in err_str:
-                print(f"[Ollama] Model {MODEL_NAME} failed, falling back to llama3.2")
+                print(f"[Ollama] Model {self.model_name} failed, falling back to llama3.2")
                 fallback_llm = OllamaLLM(
-                    model="llama3.2", base_url=OLLAMA_BASE_URL, temperature=0.2
+                    model="llama3.2", base_url=self.base_url, temperature=0.2
                 )
                 try:
                     raw = fallback_llm.invoke(prompt)

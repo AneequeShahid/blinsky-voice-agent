@@ -21,10 +21,16 @@ from blinsky.skills import SkillManager
 class BlinskyPipeline:
     """Chains Whisper -> Ollama (+ tools) -> TTS in a live voice loop."""
 
-    def __init__(self) -> None:
+    def __init__(self, keys: Optional[dict] = None) -> None:
         self.whisper = WhisperProcessor()
-        self.ollama = OllamaProcessor()
-        self.tools = ToolProcessor()
+        
+        keys = keys or {}
+        ollama_url = keys.get("ollama_url")
+        ollama_model = keys.get("ollama_model")
+        tavily_key = keys.get("tavily_key")
+        
+        self.ollama = OllamaProcessor(base_url=ollama_url, model_name=ollama_model)
+        self.tools = ToolProcessor(tavily_key=tavily_key)
         self.tts = TTSProcessor()
         self.memory = Memory()
         self.skills = SkillManager()  # Phase 4: skill learning

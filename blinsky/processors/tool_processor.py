@@ -20,6 +20,9 @@ TOOLS = {
 class ToolProcessor:
     """Dispatches tool calls from OllamaProcessor and returns formatted results."""
 
+    def __init__(self, tavily_key: Optional[str] = None) -> None:
+        self.tavily_key = tavily_key
+
     def execute(self, tool_call: Dict[str, Any]) -> str:
         name = tool_call.get("name")
         args = tool_call.get("args", {})
@@ -28,7 +31,10 @@ class ToolProcessor:
             return f"Unknown tool: {name}"
 
         try:
-            result = func(**args)
+            if name == "web_search":
+                result = func(**args, tavily_key=self.tavily_key)
+            else:
+                result = func(**args)
             if not isinstance(result, str):
                 result = json.dumps(result, ensure_ascii=False)
             return result
