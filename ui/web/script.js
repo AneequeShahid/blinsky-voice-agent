@@ -3,7 +3,7 @@ const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const micBtn = document.getElementById('mic-btn');
 
-const API_URL = 'http://localhost:8000/chat';
+const API_URL = 'http://localhost:9000/chat';
 
 function addMessage(role, content) {
     const msgDiv = document.createElement('div');
@@ -77,7 +77,13 @@ async function sendMessage() {
         
         const data = await response.json();
         removeTypingIndicator();
-        addMessage('assistant', data.reply || "No reply from backend.");
+        
+        if (data.reply) {
+            addMessage('assistant', data.reply);
+        } else {
+            console.error("Backend returned unexpected data:", data);
+            addMessage('assistant', "Error: Check browser console. " + JSON.stringify(data));
+        }
     } catch (err) {
         console.error(err);
         removeTypingIndicator();
@@ -101,5 +107,32 @@ micBtn.addEventListener('click', () => {
     } else {
         micBtn.classList.remove('active');
         messageInput.placeholder = 'Message Blinsky...';
+    }
+});
+
+// ── Phase 2: Wake Word toggle ────────────────────────────────────────────
+const wakeBtn = document.getElementById('wake-btn');
+const wakeLabel = document.getElementById('wake-label');
+const statusText = document.getElementById('status-text');
+const statusDot = document.getElementById('status-dot');
+let wakeActive = false;
+
+wakeBtn.addEventListener('click', () => {
+    wakeActive = !wakeActive;
+    if (wakeActive) {
+        wakeBtn.classList.add('active');
+        wakeLabel.textContent = 'Listening...';
+        statusText.textContent = 'Wake word active';
+        statusDot.style.background = '#2ea043';
+        addMessage('assistant',
+            '🎙️ Wake word mode is ON. Say "blueberry" (or your configured keyword) to activate me. ' +
+            'Make sure the backend is running with: python main.py --wake'
+        );
+    } else {
+        wakeBtn.classList.remove('active');
+        wakeLabel.textContent = 'Wake Word';
+        statusText.textContent = 'Connected';
+        statusDot.style.background = '#2ea043';
+        addMessage('assistant', '⏹️ Wake word mode turned off.');
     }
 });

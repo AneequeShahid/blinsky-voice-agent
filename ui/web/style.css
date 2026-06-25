@@ -51,6 +51,46 @@ header {
     border-bottom: 1px solid var(--border-color);
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.wake-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 7px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.25s;
+}
+
+.wake-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.wake-btn.active {
+    background: rgba(46, 160, 67, 0.15);
+    border-color: rgba(46, 160, 67, 0.5);
+    color: #2ea043;
+    animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+    0%   { box-shadow: 0 0 0 0 rgba(46,160,67,0.4); }
+    70%  { box-shadow: 0 0 0 8px rgba(46,160,67,0); }
+    100% { box-shadow: 0 0 0 0 rgba(46,160,67,0); }
+}
+
 .logo {
     display: flex;
     align-items: center;

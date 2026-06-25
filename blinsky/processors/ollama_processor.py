@@ -16,28 +16,66 @@ load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MODEL_NAME = "llama3.2"
-TOOL_TAG_RE = re.compile(r"<tool>(.*?)</tool>", re.DOTALL)
+
+# Matches any <tool ...> tag — opening, closing, self-closing, broken
+_TOOL_GARBAGE_RE = re.compile(r"</?tool[^>]*>", re.DOTALL)
+
+
+def _strip_tool_tags(text: str) -> str:
+    """Remove every <tool>, </tool>, <tool .../> tag from text."""
+    return _TOOL_GARBAGE_RE.sub("", text).strip()
+
+
+def _extract_json(text: str) -> Optional[dict]:
+    """
+    Try to extract the first valid JSON object from text.
+    Handles nested braces so partial/broken JSON fails gracefully.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = text[start : i + 1]
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 class OllamaProcessor:
     """Sends user transcript to local Ollama and returns text + optional tool call."""
 
+    SYSTEM_PROMPT = (
+        "You are Blinsky, a helpful and concise local AI assistant. "
+        "You have access to these tools:\n"
+        "  web_search(query) — search the web\n"
+        "  write_file(filename, content) — write a local file\n"
+        "  read_file(filename) — read a local file\n\n"
+        "TOOL CALL FORMAT — use this EXACT format when you need a tool:\n"
+        '  <tool>{"name": "web_search", "args": {"query": "your query here"}}</tool>\n\n'
+        "RULES:\n"
+        "  1. Put the JSON BETWEEN <tool> and </tool>. Always close the tag.\n"
+        "  2. The JSON must have 'name' and 'args' keys.\n"
+        "  3. Never put anything else inside the <tool> block.\n"
+        "  4. Only call ONE tool per response.\n"
+        "  5. If you don't need a tool, reply naturally in 1-2 sentences.\n"
+        "  6. Never output a <tool> tag unless you intend to call a tool.\n"
+    )
+
     def __init__(self, system_prompt: Optional[str] = None) -> None:
         self.llm = OllamaLLM(
             model=MODEL_NAME,
             base_url=OLLAMA_BASE_URL,
-            temperature=0.3,
+            temperature=0.2,
         )
-        self.system_prompt = system_prompt or (
-            "You are Blinsky, a concise local voice assistant. "
-            "If you need to call a tool, output it ONLY inside a single <tool>... </tool> "
-            "XML block as JSON with keys: name and args. "
-            "For web search use: {\"name\": \"web_search\", \"args\": {\"query\": \"...\"}}. "
-            "For file write use: {\"name\": \"write_file\", \"args\": {\"filename\": \"...\", \"content\": \"...\"}}. "
-            "For file read use: {\"name\": \"read_file\", \"args\": {\"filename\": \"...\"}}. "
-            "Otherwise reply naturally in one or two sentences. "
-            "Output a final user-facing reply after tool results when applicable."
-        )
+        self.system_prompt = system_prompt or self.SYSTEM_PROMPT
         self.history: list[dict[str, str]] = []
 
     def _build_prompt(self, user_text: str) -> str:
@@ -46,17 +84,28 @@ class OllamaProcessor:
             lines.append(f"User: {turn['user']}")
             lines.append(f"Assistant: {turn['assistant']}")
         lines.append(f"User: {user_text}")
+        lines.append("Assistant:")
         return "\n".join(lines)
 
     def _parse_tool_call(self, text: str) -> Optional[dict]:
-        m = TOOL_TAG_RE.search(text)
-        if not m:
+        """
+        Robustly detect any tool call in model output.
+        Handles: <tool>{...}</tool>, unclosed <tool>{...}, broken <tool>}
+        """
+        if "<tool" not in text:
             return None
-        raw = m.group(1).strip()
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
+
+        # Extract JSON from anywhere after <tool>
+        tool_start = text.find("<tool")
+        after_tag = text[tool_start:]
+
+        # Find the first { after the opening tag
+        brace_pos = after_tag.find("{")
+        if brace_pos == -1:
+            # No JSON object at all (e.g. <tool>} or <tool/>)
             return None
+
+        return _extract_json(after_tag[brace_pos:])
 
     def process(self, user_text: str) -> Tuple[str, Optional[dict]]:
         """Return (final_text, tool_call_or_None)."""
@@ -65,15 +114,25 @@ class OllamaProcessor:
             raw = self.llm.invoke(prompt)
         except Exception as exc:
             print(f"[Ollama] error: {exc}")
-            raw = "Sorry, I'm having trouble thinking right now."
+            return "Sorry, I'm having trouble connecting to Ollama right now.", None
+
+        print(f"[Ollama] raw output: {repr(raw)}")  # debug log
 
         tool_call = self._parse_tool_call(raw)
-        if tool_call:
-            # strip <tool> block so history stores clean text
-            clean = TOOL_TAG_RE.sub("", raw).strip()
-            return clean or raw, tool_call
 
-        return raw, None
+        if tool_call:
+            # Strip all <tool> tags from text before returning
+            clean = _strip_tool_tags(raw)
+            return clean, tool_call
+
+        # No tool call — still strip any accidental tag garbage
+        clean = _strip_tool_tags(raw)
+
+        # If stripping wiped everything, return a safe fallback
+        if not clean:
+            return "I couldn't generate a response. Please try again.", None
+
+        return clean, None
 
     def add_turn(self, user_text: str, assistant_text: str) -> None:
         self.history.append({"user": user_text, "assistant": assistant_text})

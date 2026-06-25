@@ -14,9 +14,15 @@
                 <div class="orb"></div>
                 <h1>Blinsky</h1>
             </div>
-            <div class="status">
-                <span class="dot"></span>
-                <span id="status-text">Connected</span>
+            <div class="header-right">
+                <button id="wake-btn" class="wake-btn" title="Toggle wake word mode">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                    <span id="wake-label">Wake Word</span>
+                </button>
+                <div class="status">
+                    <span class="dot" id="status-dot"></span>
+                    <span id="status-text">Connected</span>
+                </div>
             </div>
         </header>
 
