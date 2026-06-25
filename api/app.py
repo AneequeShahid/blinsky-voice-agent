@@ -3,11 +3,13 @@ FastAPI backend for Blinsky — POST /chat returns Ollama response JSON.
 """
 from __future__ import annotations
 
+import re
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from blinsky.memory import Memory
-from blinsky.processors.ollama_processor import OllamaProcessor
+from blinsky.processors.ollama_processor import OllamaProcessor, TOOL_TAG_RE
 
 app = FastAPI(title="Blinsky Voice Agent API", version="0.1.0")
 
@@ -27,9 +29,14 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+from pydantic import BaseModel
+
+class ChatRequest(BaseModel):
+    message: str
+
 @app.post("/chat")
-def chat(payload: dict) -> dict:
-    user_text = payload.get("message", "")
+def chat(payload: ChatRequest) -> dict:
+    user_text = payload.message
     if not user_text:
         return {"reply": "Empty message."}
     ov = _get_ollama()
@@ -44,6 +51,9 @@ def chat(payload: dict) -> dict:
             "Now answer the user's original request concisely."
         )
         reply, _ = ov.process(follow_up)
+        reply = TOOL_TAG_RE.sub("", reply).strip()
+    else:
+        reply = TOOL_TAG_RE.sub("", reply).strip()
     ov.add_turn(user_text, reply)
     mv.add(mv.collection.count() + 1, user_text, reply)
     return {"reply": reply, "tool_call": tool_call}
