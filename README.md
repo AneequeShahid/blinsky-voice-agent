@@ -32,7 +32,8 @@ venv\Scripts\activate   # Windows
 
 pip install -r requirements.txt
 
-ollama pull llama3.2
+ollama pull qwen2.5:7b
+ollama pull llama3.2  # fallback model
 ollama pull nomic-embed-text
 ```
 

@@ -1,5 +1,5 @@
 """
-OllamaProcessor: send transcript + history to Ollama llama3.2,
+OllamaProcessor: send transcript + history to Ollama llama3.2 or qwen2.5,
 detect tool use, return response and tool call if any.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from blinsky.skills import SkillManager
 load_dotenv()
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-MODEL_NAME = "llama3.2"
+MODEL_NAME = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
 # Matches any <tool ...> tag — opening, closing, self-closing, broken
 _TOOL_GARBAGE_RE = re.compile(r"</?tool[^>]*>", re.DOTALL)
@@ -62,6 +62,10 @@ class OllamaProcessor:
         "  read_file(filename) — read a local file\n\n"
         "TOOL CALL FORMAT — use this EXACT format when you need a tool:\n"
         '  <tool>{"name": "web_search", "args": {"query": "your query here"}}</tool>\n\n'
+        "WORKED EXAMPLE:\n"
+        "  User: What is the weather in Tokyo?\n"
+        "  Assistant: Let me search the web for the current weather in Tokyo.\n"
+        '  <tool>{"name": "web_search", "args": {"query": "current weather in Tokyo"}}</tool>\n\n'
         "RULES:\n"
         "  1. Put the JSON BETWEEN <tool> and </tool>. Always close the tag.\n"
         "  2. The JSON must have 'name' and 'args' keys.\n"
@@ -69,6 +73,8 @@ class OllamaProcessor:
         "  4. Only call ONE tool per response.\n"
         "  5. If you don't need a tool, reply naturally in 1-2 sentences.\n"
         "  6. Never output a <tool> tag unless you intend to call a tool.\n"
+        "  7. If you cannot answer accurately without current information, ALWAYS use web_search first. Never make up URLs, news, or facts.\n"
+        "  8. Never hallucinate search results. If you searched and got results, cite them.\n"
     )
 
     def __init__(self, system_prompt: Optional[str] = None) -> None:
@@ -123,8 +129,20 @@ class OllamaProcessor:
         try:
             raw = self.llm.invoke(prompt)
         except Exception as exc:
-            print(f"[Ollama] error: {exc}")
-            return "Sorry, I'm having trouble connecting to Ollama right now.", None
+            err_str = str(exc).lower()
+            if "model" in err_str or "not found" in err_str:
+                print(f"[Ollama] Model {MODEL_NAME} failed, falling back to llama3.2")
+                fallback_llm = OllamaLLM(
+                    model="llama3.2", base_url=OLLAMA_BASE_URL, temperature=0.2
+                )
+                try:
+                    raw = fallback_llm.invoke(prompt)
+                except Exception as exc2:
+                    print(f"[Ollama] fallback also failed: {exc2}")
+                    return "Sorry, I am having trouble connecting to Ollama.", None
+            else:
+                print(f"[Ollama] error: {exc}")
+                return "Sorry, I am having trouble connecting to Ollama.", None
 
         print(f"[Ollama] raw output: {repr(raw)}")  # debug log
 
