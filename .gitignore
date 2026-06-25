@@ -1,6 +1,13 @@
 venv/
 __pycache__/
 .env
+.env.*
 vectorstore/
 *.pyc
 pipecat-reference/
+data/
+output/
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
