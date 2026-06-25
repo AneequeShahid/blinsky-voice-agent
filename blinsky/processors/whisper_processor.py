@@ -13,8 +13,16 @@ import wave
 from typing import Optional
 
 import numpy as np
-import sounddevice as sd
-from faster_whisper import WhisperModel
+
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 
 class WhisperProcessor:
@@ -33,7 +41,11 @@ class WhisperProcessor:
         self.silence_duration = 2.0        # changed: 1.2 → 2.0s
         self.max_listen_duration = 30.0    # changed: 15.0 → 30.0s
 
-        self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        if WhisperModel is not None:
+            self.model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        else:
+            self.model = None
+            print("[Whisper] faster-whisper not installed. Transcription disabled.")
         self._audio_queue: "queue.Queue[np.ndarray]" = queue.Queue()
         self._recording = threading.Event()
 
@@ -73,6 +85,10 @@ class WhisperProcessor:
 
         silent_chunks = 0
         total_chunks = 0
+
+        if sd is None:
+            print("[Whisper Bypass] sounddevice not installed. Cannot record.")
+            return None
 
         print("[Whisper] Listening", end="", flush=True)  # visual feedback start
         self._recording.set()
@@ -154,6 +170,8 @@ class WhisperProcessor:
     # ------------------------------------------------------------------
     def transcribe(self, audio: np.ndarray) -> str:
         """Transcribe raw int16 audio array with faster-whisper."""
+        if self.model is None:
+            return ""
         if audio is None or len(audio) == 0:
             return ""
 

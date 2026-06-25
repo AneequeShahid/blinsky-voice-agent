@@ -9,7 +9,12 @@ import threading
 from typing import Callable, Optional
 
 import numpy as np
-import sounddevice as sd
+
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -94,6 +99,9 @@ class WakeWordDetector:
 
     def _listen_loop(self) -> None:
         """Main blocking listen loop — runs on a background thread."""
+        if sd is None:
+            print("[WakeWord] sounddevice is not installed. Wake Word loop disabled.")
+            return
         try:
             self._porcupine = self._load_porcupine()
         except RuntimeError as exc:

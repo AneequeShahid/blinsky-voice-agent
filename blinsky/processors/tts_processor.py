@@ -6,7 +6,10 @@ from __future__ import annotations
 import threading
 from typing import Optional
 
-import pyttsx3
+try:
+    import pyttsx3
+except ImportError:
+    pyttsx3 = None
 
 
 class TTSProcessor:
@@ -17,7 +20,9 @@ class TTSProcessor:
         self.volume = volume
         self._engine: Optional[pyttsx3.Engine] = None
 
-    def _get_engine(self) -> pyttsx3.Engine:
+    def _get_engine(self) -> Optional[pyttsx3.Engine]:
+        if pyttsx3 is None:
+            return None
         if self._engine is None:
             engine = pyttsx3.init()
             engine.setProperty("rate", self.rate)
@@ -35,6 +40,9 @@ class TTSProcessor:
     def speak(self, text: str) -> None:
         """Speak text aloud (blocking)."""
         if not text:
+            return
+        if pyttsx3 is None:
+            print(f"[TTS Bypass] {text}")
             return
         engine = self._get_engine()
         try:
