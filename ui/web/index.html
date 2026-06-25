@@ -79,10 +79,21 @@
 
             <!-- Bottom actions -->
             <div class="sidebar-footer">
-                <button class="footer-btn" id="clear-history-btn" title="Clear conversation history">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                    Clear Chat
-                </button>
+                <div class="footer-actions">
+                    <button class="footer-btn" id="clear-history-btn" title="Clear conversation history">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                        Clear
+                    </button>
+                    <button class="footer-btn" id="export-btn" title="Export conversation">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export
+                    </button>
+                    <label class="footer-btn" id="import-label" title="Import conversation" style="cursor:pointer; margin: 0; display: flex;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Import
+                        <input type="file" id="import-input" accept=".json" style="display:none;"/>
+                    </label>
+                </div>
                 <div class="uptime-badge" id="uptime-badge">⏱ --</div>
             </div>
         </aside>

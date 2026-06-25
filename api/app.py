@@ -189,3 +189,42 @@ def forget_skill(name: str) -> dict:
     if not existed:
         raise HTTPException(status_code=404, detail=f"No skill named '{name}'")
     return {"ok": True, "message": f"Forgot: {name}"}
+
+
+from fastapi.responses import JSONResponse, PlainTextResponse
+import json as json_lib
+
+@app.get("/export/json")
+def export_json() -> JSONResponse:
+    """Download conversation history as JSON."""
+    history = _get_pipeline().ollama.history
+    content = json_lib.dumps({"history": history, "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, indent=2)
+    return JSONResponse(
+        content=json_lib.loads(content),
+        headers={"Content-Disposition": "attachment; filename=blinsky_conversation.json"}
+    )
+
+@app.get("/export/txt", response_class=PlainTextResponse)
+def export_txt() -> str:
+    """Download conversation history as readable text file."""
+    history = _get_pipeline().ollama.history
+    lines = ["Blinsky Conversation Export", "=" * 40, ""]
+    for turn in history:
+        lines.append(f"Aneeque: {turn.get('user', '')}")
+        lines.append(f"Blinsky: {turn.get('assistant', '')}")
+        lines.append("")
+    content = "\n".join(lines)
+    return PlainTextResponse(
+        content=content,
+        headers={"Content-Disposition": "attachment; filename=blinsky_conversation.txt"}
+    )
+
+class ImportRequest(BaseModel):
+    history: list
+
+@app.post("/import")
+def import_history(payload: ImportRequest) -> dict:
+    """Load conversation history into the current session."""
+    pipeline = _get_pipeline()
+    pipeline.ollama.history = payload.history
+    return {"ok": True, "loaded": len(payload.history), "message": f"Loaded {len(payload.history)} turns"}

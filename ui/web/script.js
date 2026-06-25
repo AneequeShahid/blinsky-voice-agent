@@ -366,6 +366,35 @@ agentBtn.addEventListener('click', () => {
     agentLabel.textContent = agentActive ? 'Agent: Active' : 'Agent Mode';
 });
 
+// ── Export / Import ───────────────────────────────────────────────────────────
+document.getElementById('export-btn').addEventListener('click', async () => {
+    try {
+        const r = await fetch(`${API}/export/json`);
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'blinsky_conversation.json';
+        a.click(); URL.revokeObjectURL(url);
+    } catch { renderMessage('assistant', 'Export failed — is the backend running?'); }
+});
+
+document.getElementById('import-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+        const data = JSON.parse(text);
+        const history = data.history || [];
+        const r = await fetch(`${API}/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history }),
+        });
+        const d = await r.json();
+        renderMessage('assistant', `📂 Imported ${d.loaded} conversation turns.`);
+    } catch { renderMessage('assistant', 'Import failed — invalid JSON file.'); }
+});
+
 // ── Initial load ──────────────────────────────────────────────────────────────
 fetchStatus();
 fetchSkills();

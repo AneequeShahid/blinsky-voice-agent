@@ -329,6 +329,8 @@ html, body {
     flex-shrink: 0;
 }
 
+.footer-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
 .footer-btn {
     display: flex; align-items: center; gap: 7px;
     background: transparent; border: 1px solid var(--c-border);
